@@ -262,7 +262,7 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
   function hud(){
     const pct=maxPos()?Math.round(S.pos/maxPos()*100):0;
     let h='';
-    if(S.rec&&S.rec.state==='recording')h+='<span class="dot"></span>'+fmt((Date.now()-S.recStart)/1000)+' · ';
+    if(S.rec&&S.rec.state==='recording')h+='<span class="dot"></span>'+fmt((Date.now()-S.recStart)/1000)+(S.hasAudio?'':' · NINCS HANG')+' · ';
     h+='seb. '+S.speed+' · '+pct+'%';
     $('hud').innerHTML=h;
   }
@@ -274,7 +274,17 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
   async function startCam(needAudio){
     if(S.stream)return true;
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('nosupport');
-    S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1080},height:{ideal:1920}},audio:needAudio});
+    // A kamera natív képét kérjük (nincs böngészős kivágás/nagyítás), a hangot pedig rögtön a képpel együtt,
+    // hogy egyetlen engedélykérés legyen és a mikrofon biztosan fusson a felvételkor.
+    const video={facingMode:'user',width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30},resizeMode:'none'};
+    const audio={echoCancellation:true,noiseSuppression:true,autoGainControl:true};
+    S.noMic=false;
+    try{S.stream=await navigator.mediaDevices.getUserMedia({video,audio})}
+    catch(e){
+      if(e&&e.name==='NotAllowedError'&&!needAudio)throw e;
+      try{S.stream=await navigator.mediaDevices.getUserMedia({video});S.noMic=true}
+      catch(e2){throw e2}
+    }
     $('cam').srcObject=S.stream;
     return true;
   }
@@ -323,7 +333,8 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
 
   // ---- Felvétel ----
   function pickMime(){
-    const opts=['video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+    // MP4 (H.264 + AAC) az első, mert ezt minden közösségi oldal elfogadja; utána WebM Opus hanggal.
+    const opts=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4;codecs=avc1,mp4a.40.2','video/webm;codecs=vp8,opus','video/webm;codecs=vp9,opus','video/webm'];
     for(const m of opts){try{if(MediaRecorder.isTypeSupported(m))return m}catch(e){}}
     return '';
   }
@@ -334,6 +345,9 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
     if(!v.videoWidth){await new Promise(r=>{v.addEventListener('loadedmetadata',r,{once:true});setTimeout(r,2000)})}
     try{await v.play()}catch(e){}
     const vw=v.videoWidth||720,vh=v.videoHeight||1280;
+    S.srcSize=vw+'×'+vh;
+    // Ha a kamera már álló, közel 9:16-os képet ad, közvetlenül azt rögzítjük, kivágás nélkül.
+    if(vw<vh&&Math.abs(vw/vh-9/16)<0.03){return {stream:S.stream,W:vw,H:vh,big:vh>=1500}}
     let cw,ch,sx,sy;
     if(vw/vh>9/16){ch=vh;cw=Math.round(vh*9/16);sx=Math.round((vw-cw)/2);sy=0}
     else{cw=vw;ch=Math.round(vw*16/9);sx=0;sy=Math.round((vh-ch)/2)}
@@ -348,9 +362,10 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
   }
   async function startRec(){
     if(!S.stream.getAudioTracks().length){
-      try{const a=await navigator.mediaDevices.getUserMedia({audio:true});a.getAudioTracks().forEach(t=>S.stream.addTrack(t))}catch(e){}
+      try{const a=await navigator.mediaDevices.getUserMedia({audio:true});a.getAudioTracks().forEach(t=>S.stream.addTrack(t));S.noMic=false}catch(e){S.noMic=true}
     }
     const out=await portraitStream();
+    S.hasAudio=out.stream.getAudioTracks().some(t=>t.readyState==='live');
     const mime=pickMime();
     const opt={videoBitsPerSecond:out.big?10e6:6e6};if(mime)opt.mimeType=mime;
     try{S.rec=new MediaRecorder(out.stream,opt)}catch(e){try{S.rec=new MediaRecorder(out.stream)}catch(e2){S.drawing=false;S.rec=null;return}}
@@ -365,7 +380,7 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
       S.blobUrl=URL.createObjectURL(blob);
       const d=new Date(),stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
       $('playback').src=S.blobUrl;$('dlLink').href=S.blobUrl;$('dlLink').download='sugo-'+stamp+'.'+ext;
-      $('dlNote').textContent='Formátum: '+ext.toUpperCase()+', álló 9:16 ('+S.outSize+'). A videó a Letöltések mappába kerül.';
+      $('dlNote').textContent='Formátum: '+ext.toUpperCase()+', álló '+S.outSize+' (kamera: '+S.srcSize+'). Hang: '+(S.hasAudio?'van':'NINCS – engedélyezd a mikrofont a Chrome-ban')+'. A videó a Letöltések mappába kerül.';
       $('saveBox').hidden=false;
       $('recBtn').classList.remove('on');
       if($('prompter').hidden)stopCam();
