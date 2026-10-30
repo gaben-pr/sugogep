@@ -171,6 +171,7 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.6/fix-webm-duration.js"></script>
 <script>
 (function(){
   const $=id=>document.getElementById(id);
@@ -371,10 +372,15 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
     try{S.rec=new MediaRecorder(out.stream,opt)}catch(e){try{S.rec=new MediaRecorder(out.stream)}catch(e2){S.drawing=false;S.rec=null;return}}
     S.chunks=[];S.recStart=Date.now();S.outSize=out.W+'×'+out.H;
     S.rec.ondataavailable=e=>{if(e.data&&e.data.size)S.chunks.push(e.data)};
-    S.rec.onstop=()=>{
+    S.rec.onstop=async()=>{
       S.drawing=false;
+      const durMs=Date.now()-S.recStart;
       const type=S.rec.mimeType||mime||'video/webm';
-      const blob=new Blob(S.chunks,{type});
+      let blob=new Blob(S.chunks,{type});
+      // A böngésző WebM-felvételéből hiányzik a hossz, ezért a galéria rövidnek mutatja. Itt beírjuk a valódi hosszt.
+      if(!type.includes('mp4')&&typeof window.ysFixWebmDuration==='function'){
+        try{blob=await window.ysFixWebmDuration(blob,durMs,{logger:false})}catch(e){}
+      }
       const ext=type.includes('mp4')?'mp4':'webm';
       if(S.blobUrl)URL.revokeObjectURL(S.blobUrl);
       S.blobUrl=URL.createObjectURL(blob);
