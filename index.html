@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1114">
+<meta name="mobile-web-app-capable" content="yes">
+<style>body{margin:0}[hidden]{display:none!important}</style>
+<title>Gábor Súgógépe</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Sans+Condensed:wght@400;500;600&display=swap">
+<style>
+/* Layout: egy szerkesztő képernyő (szöveg + beállítások), és egy teljes képernyős súgó nézet, a szöveg a képernyő tetején, a kamera közelében */
+:root{
+  --bg:#0f1114;
+  --panel:#181b20;
+  --line:#2a2f37;
+  --fg:#eef0f3;
+  --muted:#9aa3ae;
+  --accent:#ffb547;
+  --rec:#ff4d4d;
+  --read:#ffb54733;
+  --font-script:"Atkinson Hyperlegible", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-ui:"IBM Plex Sans Condensed", "Roboto Condensed", "Arial Narrow", sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:16px;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* ---------- Szerkesztő ---------- */
+#editor{max-width:720px;margin:0 auto;padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+header h1{font-size:1.5rem;margin:0;font-weight:600;letter-spacing:.01em}
+header p{margin:4px 0 0;color:var(--muted);font-size:.95rem}
+label.lbl{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
+textarea{width:100%;min-height:42vh;resize:vertical;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;font-family:var(--font-script);font-size:1.05rem;line-height:1.55}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:.85rem;margin-top:6px;font-variant-numeric:tabular-nums;gap:12px;flex-wrap:wrap}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px}
+.field output{float:right;color:var(--fg);font-variant-numeric:tabular-nums;text-transform:none;letter-spacing:0}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.toggles{display:flex;flex-wrap:wrap;gap:10px}
+.chip{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;cursor:pointer;user-select:none}
+.chip input{accent-color:var(--accent);width:18px;height:18px;margin:0}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn{border:0;border-radius:10px;padding:14px 18px;font-weight:600;cursor:pointer;background:var(--panel);border:1px solid var(--line)}
+.btn.primary{background:var(--accent);color:#1a1205;border-color:var(--accent);flex:1 1 200px;font-size:1.05rem}
+.btn.rec{background:transparent;border-color:var(--rec);color:var(--rec);flex:1 1 200px}
+.note{color:var(--muted);font-size:.85rem;line-height:1.45;margin:0}
+#camNote{color:var(--accent)}
+
+/* ---------- Súgó nézet ---------- */
+#prompter{position:fixed;inset:0;background:#000;overflow:hidden;touch-action:none}
+#cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:.35}
+#stage{position:absolute;inset:0;overflow:hidden}
+#stage.mirror{transform:scaleX(-1)}
+#text{position:absolute;left:0;right:0;top:0;padding:0 max(18px,env(safe-area-inset-right,0px)) 0 max(18px,env(safe-area-inset-left,0px));font-family:var(--font-script);font-weight:700;line-height:1.35;color:#fff;white-space:pre-wrap;word-wrap:break-word;text-shadow:0 2px 6px rgba(0,0,0,.8);will-change:transform}
+#readline{position:absolute;left:0;right:0;height:3px;background:var(--accent);opacity:.55;pointer-events:none}
+#readband{position:absolute;left:0;right:0;background:var(--read);pointer-events:none}
+#fadeTop{position:absolute;left:0;right:0;top:0;height:calc(env(safe-area-inset-top,0px) + 10px);background:#000;pointer-events:none}
+#countdown{position:absolute;inset:0;display:grid;place-items:center;font-size:30vmin;font-weight:700;color:var(--accent);pointer-events:none;text-shadow:0 4px 20px #000}
+#bar{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;flex-wrap:wrap;gap:8px;padding:12px max(12px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px));background:linear-gradient(transparent,rgba(0,0,0,.85) 40%)}
+#bar button{min-width:52px;height:52px;border-radius:26px;border:1px solid #ffffff33;background:#ffffff1a;color:#fff;font-size:1rem;font-weight:600;padding:0 14px;cursor:pointer}
+#bar button.on{background:var(--accent);color:#1a1205;border-color:var(--accent)}
+#bar #recBtn.on{background:var(--rec);border-color:var(--rec);color:#fff}
+#hud{position:absolute;right:max(12px,env(safe-area-inset-right,0px));top:calc(10px + env(safe-area-inset-top,0px));font-size:.8rem;color:#fff;background:#0009;border-radius:6px;padding:4px 8px;font-variant-numeric:tabular-nums;pointer-events:none}
+#hud .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--rec);margin-right:6px;vertical-align:middle;animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){#hud .dot{animation:none}}
+
+/* ---------- Mentés ablak ---------- */
+#saveBox{position:fixed;inset:0;display:grid;place-items:center;background:#000c;padding:16px}
+#saveBox .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;max-width:420px;width:100%;display:flex;flex-direction:column;gap:12px}
+#saveBox video{width:100%;max-height:45vh;border-radius:8px;background:#000}
+#saveBox a.btn{text-align:center;text-decoration:none}
+</style>
+</head>
+<body>
+
+
+<section id="editor">
+  <header>
+    <h1>Súgógép</h1>
+    <p>Írd vagy másold be a szöveget, állítsd be a sebességet, és indítsd. Koppintás a szövegre: szünet. Húzással kézzel is görgethetsz.</p>
+  </header>
+
+  <div>
+    <label class="lbl" for="script">Szöveg</label>
+    <textarea id="script" spellcheck="false"></textarea>
+    <div class="meta"><span id="stats">0 szó</span><span id="eta">≈ 0:00 felolvasva</span></div>
+  </div>
+
+  <div class="grid">
+    <div class="field">
+      <label class="lbl" for="speed">Sebesség <output id="speedOut"></output></label>
+      <input type="range" id="speed" min="10" max="200" step="5" value="60">
+    </div>
+    <div class="field">
+      <label class="lbl" for="size">Betűméret <output id="sizeOut"></output></label>
+      <input type="range" id="size" min="22" max="80" step="2" value="40">
+    </div>
+    <div class="field">
+      <label class="lbl" for="pos">Olvasósor helye <output id="posOut"></output></label>
+      <input type="range" id="pos" min="8" max="60" step="2" value="22">
+    </div>
+  </div>
+
+  <div class="toggles">
+    <label class="chip"><input type="checkbox" id="mirror"> Tükrözés (súgóállványhoz)</label>
+    <label class="chip"><input type="checkbox" id="useCam" checked> Kamerakép a háttérben</label>
+    <label class="chip"><input type="checkbox" id="cd" checked> 3 mp visszaszámlálás</label>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="startBtn">Súgó indítása</button>
+    <button class="btn rec" id="startRecBtn">● Indítás felvétellel</button>
+  </div>
+  <p class="note" id="camNote" hidden></p>
+  <p class="note">Tipp: a szöveg a képernyő tetején fut, közel az előlapi kamerához, így a nézésirány természetesebb. A szöveget ez az eszköz megjegyzi.</p>
+</section>
+
+<section id="prompter" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <div id="stage">
+    <div id="readband"></div>
+    <div id="readline"></div>
+    <div id="text"></div>
+  </div>
+  <div id="fadeTop"></div>
+  <div id="hud"></div>
+  <div id="countdown" hidden></div>
+  <div id="bar">
+    <button id="playBtn" aria-label="Lejátszás vagy szünet">❚❚</button>
+    <button id="slowBtn" aria-label="Lassabb">−</button>
+    <button id="fastBtn" aria-label="Gyorsabb">+</button>
+    <button id="topBtn" aria-label="Vissza az elejére">⤒</button>
+    <button id="recBtn" aria-label="Felvétel">● REC</button>
+    <button id="exitBtn" aria-label="Kilépés">Kész</button>
+  </div>
+</section>
+
+<div id="saveBox" hidden>
+  <div class="card">
+    <strong>Felvétel kész</strong>
+    <video id="playback" controls playsinline></video>
+    <a class="btn primary" id="dlLink" download="felvetel.webm">Videó mentése</a>
+    <p class="note" id="dlNote">A videó a Letöltések mappába kerül.</p>
+    <button class="btn" id="closeSave">Bezárás</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const S={pos:0,playing:false,speed:60,size:40,line:22,mirror:false,raf:0,last:0,stream:null,rec:null,chunks:[],recStart:0,blobUrl:null};
+  const sample="Sziasztok! Ez egy példaszöveg, cseréld le a sajátodra.\n\nA súgógép a képernyő tetején görgeti a szöveget, így végig a kamerába nézhetsz.\n\nA sebességet a + és − gombbal menet közben is állíthatod. Ha megakadsz, koppints a képernyőre, és a szöveg megáll.\n\nHa végeztél, nyomd meg a Kész gombot.";
+
+  const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+  $('script').value=store.get('sg_script')||sample;
+  ['speed','size','pos'].forEach(k=>{const v=store.get('sg_'+k);if(v)$(k).value=v});
+  $('mirror').checked=store.get('sg_mirror')==='1';
+
+  function fmt(sec){sec=Math.max(0,Math.round(sec));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0')}
+  function updateStats(){
+    const w=($('script').value.trim().match(/\S+/g)||[]).length;
+    $('stats').textContent=w+' szó';
+    $('eta').textContent='≈ '+fmt(w/130*60)+' felolvasva';
+  }
+  function syncOut(){
+    $('speedOut').textContent=$('speed').value;
+    $('sizeOut').textContent=$('size').value+' px';
+    $('posOut').textContent=$('pos').value+'%';
+  }
+  $('script').addEventListener('input',()=>{updateStats();store.set('sg_script',$('script').value)});
+  ['speed','size','pos'].forEach(k=>$(k).addEventListener('input',()=>{syncOut();store.set('sg_'+k,$(k).value)}));
+  $('mirror').addEventListener('change',()=>store.set('sg_mirror',$('mirror').checked?'1':'0'));
+  updateStats();syncOut();
+
+  // ---- Súgó ----
+  const text=$('text');
+  function lineY(){return $('prompter').clientHeight*S.line/100}
+  function layout(){
+    text.style.fontSize=S.size+'px';
+    const y=lineY();
+    $('readline').style.top=(y+S.size*0.5)+'px';
+    $('readband').style.top=(y-S.size*0.25)+'px';
+    $('readband').style.height=(S.size*1.6)+'px';
+    $('stage').classList.toggle('mirror',S.mirror);
+    render();
+  }
+  function maxPos(){return text.scrollHeight}
+  function render(){text.style.transform='translateY('+(lineY()-S.pos)+'px)'}
+  function tick(t){
+    if(!S.playing){S.raf=0;return}
+    const dt=S.last?(t-S.last)/1000:0;S.last=t;
+    S.pos=Math.min(maxPos(),S.pos+S.speed*dt*(S.size/40));
+    render();hud();
+    if(S.pos>=maxPos()){setPlay(false)}
+    S.raf=requestAnimationFrame(tick);
+  }
+  function setPlay(p){
+    S.playing=p;$('playBtn').textContent=p?'❚❚':'▶';$('playBtn').classList.toggle('on',!p);
+    if(p&&!S.raf){S.last=0;S.raf=requestAnimationFrame(tick)}
+  }
+  function hud(){
+    const pct=maxPos()?Math.round(S.pos/maxPos()*100):0;
+    let h='';
+    if(S.rec&&S.rec.state==='recording')h+='<span class="dot"></span>'+fmt((Date.now()-S.recStart)/1000)+' · ';
+    h+='seb. '+S.speed+' · '+pct+'%';
+    $('hud').innerHTML=h;
+  }
+
+  let wake=null;
+  async function keepAwake(){try{if('wakeLock' in navigator)wake=await navigator.wakeLock.request('screen')}catch(e){wake=null}}
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&!$('prompter').hidden)keepAwake()});
+
+  async function startCam(needAudio){
+    if(S.stream)return true;
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('nosupport');
+    S.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:1080},height:{ideal:1920}},audio:needAudio});
+    $('cam').srcObject=S.stream;
+    return true;
+  }
+  function stopCam(){if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stream=null}$('cam').srcObject=null}
+
+  function camMsg(e){
+    const n=$('camNote');n.hidden=false;
+    n.textContent=(e&&e.name==='NotAllowedError')
+      ?'A kamerát itt nem lehet elérni (nincs engedély, vagy ez a megjelenítő nem engedi). A súgó kamera nélkül fut: vedd fel a telefon kamerájával osztott képernyőn, vagy nyisd meg a letöltött fájlt Chrome-ban.'
+      :'A kamera nem érhető el ezen a nézeten. A súgó kamera nélkül fut.';
+  }
+
+  async function open(withRec){
+    S.speed=+$('speed').value;S.size=+$('size').value;S.line=+$('pos').value;S.mirror=$('mirror').checked;
+    text.textContent=$('script').value||' ';
+    S.pos=0;
+    $('editor').hidden=true;$('prompter').hidden=false;
+    $('cam').style.display='none';
+    if($('useCam').checked||withRec){
+      try{await startCam(withRec);$('cam').style.display='';$('cam').style.opacity=$('useCam').checked?'.35':'0'}
+      catch(e){camMsg(e);withRec=false}
+    }
+    $('recBtn').hidden=!S.stream||typeof MediaRecorder==='undefined';
+    try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen()}catch(e){}
+    keepAwake();
+    layout();hud();
+    await countdown();
+    if(withRec&&S.stream)startRec();
+    setPlay(true);
+  }
+  function countdown(){
+    return new Promise(res=>{
+      if(!$('cd').checked)return res();
+      let n=3;const c=$('countdown');c.hidden=false;c.textContent=n;
+      const iv=setInterval(()=>{n--;if(n<=0){clearInterval(iv);c.hidden=true;res()}else c.textContent=n},1000);
+    });
+  }
+  async function exit(){
+    setPlay(false);
+    if(S.rec&&S.rec.state==='recording'){S.rec.stop()}
+    else stopCam();
+    $('prompter').hidden=true;$('editor').hidden=false;
+    try{if(document.fullscreenElement)await document.exitFullscreen()}catch(e){}
+    try{if(wake)await wake.release()}catch(e){}
+  }
+
+  // ---- Felvétel ----
+  function pickMime(){
+    const opts=['video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+    for(const m of opts){try{if(MediaRecorder.isTypeSupported(m))return m}catch(e){}}
+    return '';
+  }
+  async function startRec(){
+    if(!S.stream.getAudioTracks().length){
+      try{const a=await navigator.mediaDevices.getUserMedia({audio:true});a.getAudioTracks().forEach(t=>S.stream.addTrack(t))}catch(e){}
+    }
+    const mime=pickMime();
+    try{S.rec=new MediaRecorder(S.stream,mime?{mimeType:mime}:undefined)}catch(e){S.rec=null;return}
+    S.chunks=[];S.recStart=Date.now();
+    S.rec.ondataavailable=e=>{if(e.data&&e.data.size)S.chunks.push(e.data)};
+    S.rec.onstop=()=>{
+      const type=S.rec.mimeType||mime||'video/webm';
+      const blob=new Blob(S.chunks,{type});
+      const ext=type.includes('mp4')?'mp4':'webm';
+      if(S.blobUrl)URL.revokeObjectURL(S.blobUrl);
+      S.blobUrl=URL.createObjectURL(blob);
+      const d=new Date(),stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+      $('playback').src=S.blobUrl;$('dlLink').href=S.blobUrl;$('dlLink').download='sugo-'+stamp+'.'+ext;
+      $('dlNote').textContent='Formátum: '+ext.toUpperCase()+'. A videó a Letöltések mappába kerül.';
+      $('saveBox').hidden=false;
+      $('recBtn').classList.remove('on');
+      if($('prompter').hidden)stopCam();
+      hud();
+    };
+    S.rec.start(1000);$('recBtn').classList.add('on');
+  }
+  function toggleRec(){
+    if(S.rec&&S.rec.state==='recording'){S.rec.stop()}
+    else if(S.stream){startRec()}
+  }
+
+  // ---- Vezérlés ----
+  $('startBtn').addEventListener('click',()=>open(false));
+  $('startRecBtn').addEventListener('click',()=>open(true));
+  $('exitBtn').addEventListener('click',exit);
+  $('playBtn').addEventListener('click',()=>setPlay(!S.playing));
+  $('slowBtn').addEventListener('click',()=>{S.speed=Math.max(5,S.speed-10);hud()});
+  $('fastBtn').addEventListener('click',()=>{S.speed=Math.min(300,S.speed+10);hud()});
+  $('topBtn').addEventListener('click',()=>{S.pos=0;render();hud()});
+  $('recBtn').addEventListener('click',toggleRec);
+  $('closeSave').addEventListener('click',()=>{$('saveBox').hidden=true;$('playback').pause()});
+
+  // Koppintás = szünet, húzás = görgetés
+  let drag=null;
+  $('stage').addEventListener('pointerdown',e=>{drag={y:e.clientY,p:S.pos,moved:false,was:S.playing};});
+  $('stage').addEventListener('pointermove',e=>{
+    if(!drag)return;const dy=e.clientY-drag.y;
+    if(Math.abs(dy)>8){drag.moved=true;if(S.playing)setPlay(false)}
+    if(drag.moved){S.pos=Math.max(0,Math.min(maxPos(),drag.p-dy));render();hud()}
+  });
+  function endDrag(){if(!drag)return;if(!drag.moved)setPlay(!drag.was);else if(drag.was)setPlay(true);drag=null}
+  $('stage').addEventListener('pointerup',endDrag);
+  $('stage').addEventListener('pointercancel',endDrag);
+
+  // Bluetooth távirányító / billentyűzet
+  document.addEventListener('keydown',e=>{
+    if($('prompter').hidden)return;
+    if(e.key===' '||e.key==='Enter'||e.key==='MediaPlayPause'){e.preventDefault();setPlay(!S.playing)}
+    else if(e.key==='ArrowUp'||e.key==='PageUp'||e.key==='AudioVolumeUp'){e.preventDefault();S.speed=Math.min(300,S.speed+10);hud()}
+    else if(e.key==='ArrowDown'||e.key==='PageDown'||e.key==='AudioVolumeDown'){e.preventDefault();S.speed=Math.max(5,S.speed-10);hud()}
+    else if(e.key==='Escape')exit();
+  });
+  window.addEventListener('resize',()=>{if(!$('prompter').hidden)layout()});
+})();
+</script>
+
+</body>
+</html>
