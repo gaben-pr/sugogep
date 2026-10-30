@@ -138,7 +138,7 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
     <button class="btn rec" id="startRecBtn">● Indítás felvétellel</button>
   </div>
   <p class="note" id="camNote" hidden></p>
-  <p class="note">Tipp: a szöveg a képernyő tetején fut, közel az előlapi kamerához, így a nézésirány természetesebb. A szövegek automatikusan mentődnek ezen a telefonon, a listában a legutóbb szerkesztett van legfelül.</p>
+  <p class="note">Tipp: a szöveg a képernyő tetején fut, közel az előlapi kamerához, így a nézésirány természetesebb. A felvétel mindig álló 9:16 formátumú, social médiára kész. A szövegek automatikusan mentődnek ezen a telefonon, a listában a legutóbb szerkesztett van legfelül.</p>
 </section>
 
 <section id="prompter" hidden>
@@ -327,15 +327,37 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
     for(const m of opts){try{if(MediaRecorder.isTypeSupported(m))return m}catch(e){}}
     return '';
   }
+  // A kamerakép közepéből kivágott álló 9:16-os képet rögzítünk egy vásznon keresztül,
+  // így a felvétel mindig 720×1280 vagy 1080×1920 lesz, akármilyen arányt ad a kamera.
+  async function portraitStream(){
+    const v=$('cam');
+    if(!v.videoWidth){await new Promise(r=>{v.addEventListener('loadedmetadata',r,{once:true});setTimeout(r,2000)})}
+    try{await v.play()}catch(e){}
+    const vw=v.videoWidth||720,vh=v.videoHeight||1280;
+    let cw,ch,sx,sy;
+    if(vw/vh>9/16){ch=vh;cw=Math.round(vh*9/16);sx=Math.round((vw-cw)/2);sy=0}
+    else{cw=vw;ch=Math.round(vw*16/9);sx=0;sy=Math.round((vh-ch)/2)}
+    const big=ch>=1500,W=big?1080:720,H=big?1920:1280;
+    const c=document.createElement('canvas');c.width=W;c.height=H;
+    const g=c.getContext('2d');
+    S.drawing=true;
+    (function draw(){if(!S.drawing)return;try{g.drawImage(v,sx,sy,cw,ch,0,0,W,H)}catch(e){}requestAnimationFrame(draw)})();
+    const cs=c.captureStream(30);
+    S.stream.getAudioTracks().forEach(t=>cs.addTrack(t));
+    return {stream:cs,W,H,big};
+  }
   async function startRec(){
     if(!S.stream.getAudioTracks().length){
       try{const a=await navigator.mediaDevices.getUserMedia({audio:true});a.getAudioTracks().forEach(t=>S.stream.addTrack(t))}catch(e){}
     }
+    const out=await portraitStream();
     const mime=pickMime();
-    try{S.rec=new MediaRecorder(S.stream,mime?{mimeType:mime}:undefined)}catch(e){S.rec=null;return}
-    S.chunks=[];S.recStart=Date.now();
+    const opt={videoBitsPerSecond:out.big?10e6:6e6};if(mime)opt.mimeType=mime;
+    try{S.rec=new MediaRecorder(out.stream,opt)}catch(e){try{S.rec=new MediaRecorder(out.stream)}catch(e2){S.drawing=false;S.rec=null;return}}
+    S.chunks=[];S.recStart=Date.now();S.outSize=out.W+'×'+out.H;
     S.rec.ondataavailable=e=>{if(e.data&&e.data.size)S.chunks.push(e.data)};
     S.rec.onstop=()=>{
+      S.drawing=false;
       const type=S.rec.mimeType||mime||'video/webm';
       const blob=new Blob(S.chunks,{type});
       const ext=type.includes('mp4')?'mp4':'webm';
@@ -343,7 +365,7 @@ input.title{width:100%;background:var(--panel);border:1px solid var(--line);bord
       S.blobUrl=URL.createObjectURL(blob);
       const d=new Date(),stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
       $('playback').src=S.blobUrl;$('dlLink').href=S.blobUrl;$('dlLink').download='sugo-'+stamp+'.'+ext;
-      $('dlNote').textContent='Formátum: '+ext.toUpperCase()+'. A videó a Letöltések mappába kerül.';
+      $('dlNote').textContent='Formátum: '+ext.toUpperCase()+', álló 9:16 ('+S.outSize+'). A videó a Letöltések mappába kerül.';
       $('saveBox').hidden=false;
       $('recBtn').classList.remove('on');
       if($('prompter').hidden)stopCam();
